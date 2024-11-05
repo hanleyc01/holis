@@ -1,1 +1,1 @@
-(define foo (bar foo))
+(define foo (if #t #f #t))

@@ -234,67 +234,8 @@ class HRR(Sequence):
         return hash(self.__key())
 
 
-class HRRScale:  #
+class HRRScale:  # TODO: implement scalar
     pass
-
-
-class SimpleCleanup:
-    """
-    Simple cleanup memory.
-    """
-
-    M: npt.NDArray
-    "Memory matrix"
-    n: int
-    "Trace dimensionality"
-    m: int
-    "Initial maximum of traces"
-    k: int
-    "Increment for adding more traces"
-    i: int
-    "Current number of traces"
-
-    def __init__(self, n: int = 512, m: int = 100) -> None:
-        self.M = np.zeros((m, n))
-        self.n = n
-        self.m = m
-        self.k = m
-        self.i = 0
-
-    def memorize(self, activation: HRR) -> HRR:
-        if self.i >= self.m:
-            self.M = np.concatenate([self.M, np.zeros((self.k, self.n))], axis=0)
-        self.M[self.i, :] = activation.v
-        self.i += 1
-        return activation
-
-    def recall(self, probe: HRR) -> HRR:
-        trace = self.M @ probe.v
-        echo = HRR(self.M[np.argmax(trace), :])
-        return echo
-
-
-class Lexicon:
-    map: dict[str, HRR]
-    reverse: dict[HRR, str]
-
-    def __init__(self) -> None:
-        self.map = {}
-        self.reverse = {}
-
-    def __getitem__(self, key: str) -> HRR:
-        return self.map[key]
-
-    def __setitem__(self, key: str, value: HRR) -> None:
-        self.map[key] = value
-        self.reverse[value] = key
-
-    def update(self, d: dict[str, HRR]) -> None:
-        self.map.update(d)
-        self.reverse.update(((v, k) for k, v in d.items()))
-
-    def __list__(self) -> list[tuple[str, HRR]]:
-        return list(self.map.items())
 
 
 ################################################################################
@@ -342,7 +283,7 @@ class Lexer:
         "define": TokenKind.Define,
         "if": TokenKind.If,
         "lambda": TokenKind.Lambda,
-        ".": TokenKind.Dot
+        ".": TokenKind.Dot,
     }
 
     def __init__(self, offset: int, cont: str) -> None:
@@ -438,7 +379,7 @@ class Lexer:
             return self._error(f"Unrecognized token, {curr}")
 
 
-def report_error(err: Token, src: str,  src_name: str) -> None:
+def report_error(err: Token, src: str, src_name: str) -> None:
     """Report an error."""
     vprint(f"reporting error {err}")
     lin, col = 0, 0
@@ -448,7 +389,7 @@ def report_error(err: Token, src: str,  src_name: str) -> None:
             lin = 0
         else:
             lin += 1
-    print(f"{src_name}:{lin}:{col} [Lexical error] {err.cont}",file=sys.stderr)
+    print(f"{src_name}:{lin}:{col} [Lexical error] {err.cont}", file=sys.stderr)
 
 
 def tokenize(src: str, src_name: str) -> list[Token]:
@@ -473,215 +414,370 @@ def tokenize(src: str, src_name: str) -> list[Token]:
     return tokens
 
 
-################################################################################
-# Syntax                                                                       #
-################################################################################
+# ################################################################################
+# # Syntax                                                                       #
+# ################################################################################
 
 
-class lispexpr(ABC):
+# class lispexpr(ABC):
+#     """
+#     We define a `lispexpr` as being a syntactic representation of the source
+#     level text provided by the user.
+#     ```
+#     E_1, ..., E_n ::= x
+#                     | c
+#                     | <digit>
+#                     | (E_1 [E_2 ... E_n])
+#                     | (define <name> E_1)
+#                     | (define (name <arg1> [<arg2> ... <arg_n>]) E_1)
+#                     | (if E1 E2 E3)
+#                     | (cond [(<condition> . <result>)]+)
+
+#     <condition>  ::= E
+#     <result>   ::= E
+#     <name> ::= x
+#     <arg_n> ::= x
+#     <digit> ::= [0-9]+
+#     ```
+#     """
+
+#     pass
+
+
+# @dataclass
+# class Var(lispexpr):
+#     x: str
+#     offset: int
+
+
+# @dataclass
+# class Digit(lispexpr):
+#     i: int
+#     offset: int
+
+
+# @dataclass
+# class Lambda(lispexpr):
+#     args: list[str]
+#     body: lispexpr
+#     offset: int
+
+
+# @dataclass
+# class Application(lispexpr):
+#     rator: lispexpr
+#     rand: list[lispexpr]
+#     offset: int
+
+
+# @dataclass
+# class Define(lispexpr):
+#     name: str
+#     body: lispexpr
+#     offset: int
+
+
+# @dataclass
+# class If(lispexpr):
+#     condition: lispexpr
+#     then: lispexpr
+#     otherwise: lispexpr
+#     offset: int
+
+
+# @dataclass
+# class Cond(lispexpr):
+#     conds: list[tuple[lispexpr, lispexpr]]
+#     offset: int
+
+
+# @dataclass
+# class ParserError(Exception):
+#     msg: str
+#     offset: int
+
+
+# class Parser:
+#     _src: list[Token]
+#     _offset: int
+
+#     def __init__(self, src: list[Token], offset: int) -> None:
+#         self._src = src
+#         self._offset = offset
+
+#     def _peek(self, offset: int = 0) -> Token | None:
+#         # vprint(f"peek at: {self._offset}, {self._src[self._offset]}")
+#         try:
+#             return self._src[self._offset + offset]
+#         except IndexError:
+#             return None
+
+#     def _next(self) -> None:
+#         self._offset += 1
+
+#     def _poke(self, offset: int = 0) -> Token | None:
+#         self._next()
+#         return self._peek(offset=-1)
+
+#     def _check_next(self, kind: TokenKind, msg: str, offset: int) -> None:
+#         curr = self._peek()
+#         if curr is None or curr.kind != kind:
+#             raise ParserError(f"{msg}, {curr}", offset)
+#         self._next()
+
+#     def _is_special_form(self, kind: TokenKind) -> bool:
+#         return kind in [
+#             TokenKind.Define,
+#             TokenKind.Lambda,
+#             TokenKind.Cond,
+#             TokenKind.If,
+#         ]
+
+#     def _parse_special_form(self, special: Token) -> lispexpr | None:
+#         if special.kind == TokenKind.Define:
+#             name_token = self._poke()
+#             name: str | None = None
+#             if name_token is None or name_token.kind != TokenKind.Ident:
+#                 raise ParserError(
+#                     "Error: in `define` context expected identifier", special.offset
+#                 )
+#             elif name_token.kind == TokenKind.Ident:
+#                 name = name_token.cont
+#             body = self.parse_expr(nested=True)
+#             if body is None:
+#                 body = Var("#undefined", name_token.offset)
+#             self._check_next(
+#                 TokenKind.Right_paren,
+#                 "Error: in `define` context, expected closing right parenthesis after expression",
+#                 body.offset,
+#             )  # type:ignore
+#             return Define(name, body, name_token.offset)
+#         elif special.kind == TokenKind.Lambda:
+#             self._check_next(
+#                 TokenKind.Left_paren,
+#                 "Error: in `lambda` context, expected opening `(` for argument list, got",
+#                 special.offset,
+#             )
+
+#             args = []
+#             arg = self._peek()
+#             while arg is not None and arg.kind == TokenKind.Ident:
+#                 args.append(arg.cont)
+#                 self._next()
+#                 arg = self._peek()
+
+#             self._check_next(
+#                 TokenKind.Right_paren,
+#                 "Error: in `lambda` context, expected closing ')' for argument list, got",
+#                 special.offset,
+#             )
+
+#             body = self.parse_expr(nested=True)
+#             if body is None:
+#                 raise ParserError(
+#                     "Error: in `lambda` context, expected expression body",
+#                     special.offset,
+#                 )
+
+#             self._check_next(
+#                 TokenKind.Right_paren,
+#                 "Error: in `lambda` context, expected closing right parenthesis after expression",
+#                 body.offset,
+#             )  # type:ignore
+#             return Lambda(args, body, special.offset)
+#         elif special.kind == TokenKind.Cond:
+#             # TODO: implement cond
+#             raise Exception("unimplemented: `cond`")
+#             return None  # remove when finished
+#         elif special.kind == TokenKind.If:
+#             condition = self.parse_expr()
+#             if condition is None:
+#                 raise ParserError(
+#                     "Error: in `if` context, expected condition", special.offset
+#                 )
+
+#             then = self.parse_expr()
+#             if then is None:
+#                 raise ParserError(
+#                     "Error: in `if` expected body", condition.offset
+#                 )  # type:ignore
+
+#             otherwise = self.parse_expr()
+#             if otherwise is None:
+#                 raise ParserError("Error: in `if` expected else", then.offset)  # type: ignore
+
+#             self._check_next(
+#                 TokenKind.Right_paren,
+#                 "Error: in `lambda` context, expected closing right parenthesis after expression",
+#                 otherwise.offset,
+#             )  # type:ignore
+#             return If(condition, then, otherwise, special.offset)
+#         else:
+#             return None
+
+#     def _parse_application_or_special_form(self) -> lispexpr | None:
+#         "Parse a `lispexpr` which follows the form `(..)`."
+#         curr = self._poke()
+#         if curr is None:
+#             raise ParserError("Error: unclosed parenthesis", self._offset)
+
+#         if self._is_special_form(curr.kind):
+#             return self._parse_special_form(curr)
+#         else:
+#             rands = []
+#             rand = self.parse_expr(nested=True)
+#             while rand is not None:
+#                 rands.append(rand)
+#                 rand = self.parse_expr(nested=True)
+
+#             return Application(curr, rand=rands, offset=curr.offset)  # type: ignore
+
+#     def parse_expr(self, nested: bool = False) -> lispexpr | None:
+#         "Parse a `lispexpr`."
+#         curr = self._poke()
+#         if curr is None:
+#             return None
+
+#         if curr.kind == TokenKind.Left_paren:
+#             return self._parse_application_or_special_form()
+#         elif curr.kind == TokenKind.Int:
+#             return Digit(int(curr.cont), curr.offset)
+#         elif curr.kind == TokenKind.Ident:
+#             return Var(curr.cont, curr.offset)
+#         elif curr.kind == TokenKind.Right_paren and not nested:
+#             raise ParserError("Error: unexpected right paren", curr.offset)
+#         elif curr.kind == TokenKind.Right_paren and nested:
+#             return None
+#         elif curr.kind == TokenKind.Left_paren:
+#             return self._parse_application_or_special_form()
+#         elif curr.kind == TokenKind.Error:
+#             raise ParserError(
+#                 "This label is the target of a goto from outside of the block containing this label AND this block has an automatic variable with an initializer AND your window wasn't wide enough to read this whole error message",
+#                 curr.offset,
+#             )
+#         else:
+#             raise ParserError(f"Error: unexpected {curr.cont}", curr.offset)
+
+
+# def parse(src: str, src_name: str) -> list[lispexpr]:
+#     vprint("Parsing")
+#     tokens = tokenize(src, src_name)
+#     if VERBOSE:
+#         print("Tokenization results: ", end="")
+#         pprint(tokens)
+
+#     if len(tokens) == 0:
+#         return []
+
+#     parser = Parser(tokens, 0)
+#     exprs = []
+#     curr = parser.parse_expr()
+#     while curr is not None:
+#         exprs.append(curr)
+#         curr = parser.parse_expr()
+#     return exprs
+
+
+# ################################################################################
+# # Holographic translation and interpretation                                   #
+# ################################################################################
+
+
+class SimpleCleanup:
     """
-    We define a `lispexpr` as being a syntactic representation of the source
-    level text provided by the user.
-    ```
-    E_1, ..., E_n ::= x 
-                    | c 
-                    | <digit>
-                    | (E_1 [E_2 ... E_n])
-                    | (define <name> E_1)
-                    | (define (name <arg1> [<arg2> ... <arg_n>]) E_1)
-                    | (if E1 E2 E3)
-                    | (cond [(<condition> . <result>)]+)
-
-    <condition>  ::= E 
-    <result>   ::= E
-    <name> ::= x
-    <arg_n> ::= x
-    <digit> ::= [0-9]+
-    ```
+    Simple cleanup memory.
     """
-    pass
 
-
-@dataclass
-class Var(lispexpr):
-    x: str
-    offset: int
-
-
-@dataclass
-class Constant(lispexpr):
-    c: str
-    offset: int
-
-
-@dataclass
-class Digit(lispexpr):
+    M: npt.NDArray
+    "Memory matrix"
+    n: int
+    "Trace dimensionality"
+    m: int
+    "Initial maximum of traces"
+    k: int
+    "Increment for adding more traces"
     i: int
-    offset: int
+    "Current number of traces"
+
+    def __init__(self, n: int = 512, m: int = 100) -> None:
+        self.M = np.zeros((m, n))
+        self.n = n
+        self.m = m
+        self.k = m
+        self.i = 0
+
+    def memorize(self, activation: HRR) -> HRR:
+        if self.i >= self.m:
+            self.M = np.concatenate([self.M, np.zeros((self.k, self.n))], axis=0)
+        self.M[self.i, :] = activation.v
+        self.i += 1
+        return activation
+
+    def recall(self, probe: HRR) -> HRR:
+        trace = self.M @ probe.v
+        echo = HRR(self.M[np.argmax(trace), :])
+        return echo
+
+
+T = t.TypeVar("T")
+U = t.TypeVar("U")
 
 
 @dataclass
-class Lambda(lispexpr):
-    args: list[str]
-    body: lispexpr
-    offset: int
+class Lexicon(t.Generic[T, U]):
+    forwards: dict[T, U]
+    backwards: dict[U, T]
 
+    def add(self, key: T, value: U) -> None:
+        self.forwards[key] = value
+        self.backwards[value] = key
 
-@dataclass
-class Application(lispexpr):
-    rator: lispexpr
-    rand: list[lispexpr]
-    offset: int
+    def update(self, other: dict[T, U]) -> None:
+        self.forwards.update(other)
+        for k, v in other.items():
+            self.backwards[v] = k
 
-
-@dataclass
-class Define(lispexpr):
-    name: str
-    body: lispexpr
-    offset: int
-
-
-@dataclass
-class If(lispexpr):
-    condition: lispexpr
-    then: lispexpr
-    otherwise: lispexpr
-    offset: int
-
-
-@dataclass
-class Cond(lispexpr):
-    conds: list[tuple[lispexpr, lispexpr]]
-    offset: int
-
-
-@dataclass
-class ParserError(Exception):
-    msg: str
-    offset: int
-
-
-class Parser:
-    _src: list[Token]
-    _offset: int
-
-    def __init__(self, src: list[Token], offset: int) -> None:
-        self._src = src
-        self._offset = offset
-
-    def _peek(self, offset: int = 0) -> Token | None:
-        #vprint(f"peek at: {self._offset}, {self._src[self._offset]}")
-        try:
-            return self._src[self._offset + offset]
-        except IndexError:
-            return None
-
-    def _next(self) -> None:
-        self._offset += 1
-
-    def _poke(self, offset: int = 0) -> Token | None:
-        self._next()
-        return self._peek(offset=-1)
-
-    def _check_next(self, kind: TokenKind, msg: str, offset: int) -> None:
-        curr = self._poke()
-        if curr is None or curr.kind != kind:
-            raise ParserError(f"{msg}, {curr}", offset)
-
-    def _is_special_form(self, kind: TokenKind) -> bool:hah
-        return kind in [TokenKind.Define, TokenKind.Lambda, TokenKind.Cond, TokenKind.If]
-
-    def _parse_special_form(self, special: Token) -> lispexpr | None:
-        if special.kind == TokenKind.Define:
-            name_token = self._poke()
-            name: str | None = None
-            if name_token is None or name_token.kind != TokenKind.Ident:
-                raise ParserError("Error: in `define` context expected identifier", special.offset)
-            elif name_token.kind == TokenKind.Ident:
-                name = name_token.cont
-            body = self.parse_expr(nested=True)
-            if body is None:
-                body = Var("#undefined", name_token.offset)
-            self._check_next(TokenKind.Right_paren, "Error: in `define` context, expected closing right parenthesis after expression", body.offset) # type:ignore
-            return Define(name, body, name_token.offset)
-        elif special.kind == TokenKind.Lambda:
-            self._check_next(TokenKind.Left_paren, "Error: in `lambda` context, expected opening `(` for argument list, got", special.offset)
-            def is_ident_and_move_ptr(x: Token) -> bool:
-                if x.kind == TokenKind.Ident:
-                    self._next()
-                    return True
-                else:
-                    return False
-
-            args = [arg.cont for arg in takewhile(is_ident_and_move_ptr, self._src)]
-            self._check_next(TokenKind.Right_paren, "Error: in `lambda` context, expected closing ')' for argument list, got", special.offset)
-            body = self.parse_expr(nexted=True)
-            return Lambda(args, body)
-        elif special.kind == TokenKind.Cond:
-            return None #remove when finished
-        elif special.kind == TokenKind.If:
-            return None #remove when finished
-        else: 
-            return None
-        
-    def _parse_application_or_special_form(self) -> lispexpr | None:
-        "Parse a `lispexpr` which follows the form `(..)`."
-        curr = self._poke()
-        if curr is None:
-            raise ParserError("Error: unclosed parenthesis", self._offset)
-
-        if self._is_special_form(curr.kind):
-            return self._parse_special_form(curr)
+    def get(self, key: T) -> U:
+        if key in self.forwards:
+            return self.forwards[key]
         else:
-            rands = []
-            rand = self.parse_expr(nested=True)
-            while rand is not None:
-                rands.append(rand)
-                rand = self.parse_expr(nested=True)
-        
-            return Application(curr, rand=rands, offset=curr.offset) #type: ignore
-        
-    def parse_expr(self, nested: bool = False) -> lispexpr | None:
-        "Parse a `lispexpr`."
-        curr = self._poke()
-        if curr is None:
-            return None
-        
-        if curr.kind == TokenKind.Left_paren:
-            return self._parse_application_or_special_form()
-        elif curr.kind == TokenKind.Int:
-            return Digit(int(curr.cont), curr.offset)
-        elif curr.kind == TokenKind.Ident:
-            return Var(curr.cont, curr.offset)
-        elif curr.kind == TokenKind.Right_paren and not nested:
-            raise ParserError("Error: unexpected right paren", curr.offset)
-        elif curr.kind == TokenKind.Right_paren and nested:
-            return None
-        elif curr.kind == TokenKind.Left_paren:
-            return self._parse_application_or_special_form()
-        elif curr.kind == TokenKind.Error:
-            raise ParserError("This label is the target of a goto from outside of the block containing this label AND this block has an automatic variable with an initializer AND your window wasn't wide enough to read this whole error message", curr.offset)
+            raise KeyError(key)
+
+
+class SimpleAssoc:
+    A: Lexicon[str, HRR]
+    lexicon: Lexicon[str, HRR]
+    theta: float
+
+    def __init__(self, lexicon: Lexicon = Lexicon({}, {}), theta: float=0.2) -> None:
+        self.A = Lexicon({}, {})
+        self.lexicon = lexicon
+        self.theta = theta
+
+    def memorize(self, probe: str, trace: HRR) -> tuple[str, HRR]:
+        probe0 = probe
+        if trace not in self.A.backwards:
+            self.A.add(probe, trace)
         else:
-            raise ParserError(f"Error: unexpected {curr.cont}", curr.offset)
+            probe0 = self.A.backwards[trace]
+        return (probe0, trace)
 
 
-def parse(src: str, src_name: str) -> list[lispexpr]:
-    vprint("Parsing")
-    tokens = tokenize(src, src_name)
-    if VERBOSE:
-        print("Tokenization results: ", end="")
-        pprint(tokens)
+class Environment:
+    "Environment of functions and names used in evaluation of `lispexpr`'s"
 
-    if len(tokens) == 0:
-        return []
+    lexicon: Lexicon[str, HRR]
+    mem: SimpleCleanup
+    func: SimpleCleanup
+    assoc: SimpleAssoc
 
-    parser = Parser(tokens, 0)
-    exprs = []
-    curr = parser.parse_expr()
-    while curr is not None:
-        exprs.append(curr)
-        curr = parser.parse_expr()
-    return exprs
+    def __init__(self) -> None:
+        pass
+
+
+def evaluate(p: lispexpr) -> str:
+    env = Environment()
+    raise Exception("todo")
 
 
 ################################################################################
@@ -704,9 +800,9 @@ def vprint(*args) -> None:
         print(*args)
 
 
-def run(src: str) -> None:
+def run(parsed_program: lispexpr) -> None:
     vprint(f"entering into run, with argument {src}")
-    pass
+    print(evaluate(parsed_program))
 
 
 def repl() -> None:
@@ -720,7 +816,8 @@ def repl() -> None:
         if txt.strip() in ["", "(exit)", "(quit)", "exit", "quit"]:
             print("Goodbye!")
             exit(0)
-        run(txt)
+        parsed_program = parse(txt, "repl")
+        run(parsed_program)
 
 
 def interpret(src: str) -> None:
@@ -731,7 +828,7 @@ def interpret(src: str) -> None:
     with open(src, "r") as f:
         contents = f.read()
     parsed_program = parse(contents, src_name=src)
-    print(parsed_program)
+    run(parsed_program)
 
 
 def main() -> None:
@@ -761,7 +858,6 @@ def main() -> None:
                 print(interpret_error_str)
                 exit(-1)
             interpret(in_file)
-
 
 
 if __name__ == "__main__":
